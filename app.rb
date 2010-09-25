@@ -3,15 +3,25 @@ require 'rubygems'
 require 'sinatra'
 require 'rack/openid'
 require 'yaml'
+require 'openid'
+require 'openid/store/filesystem'
 
 use Rack::Session::Cookie
-use Rack::OpenID
 
 before do
   protected! unless request.path_info == '/' || request.path_info[/^\/login/]
 end
 
 helpers do
+  def openid_consumer
+    @openid_consumer ||= OpenID::Consumer.new(session,
+        OpenID::Store::Filesystem.new("#{File.dirname(__FILE__)}/tmp/openid"))  
+  end
+
+  def root_url
+    request.url.match(/(^.*\/{2}[^\/]*)/)[1]
+  end
+
   def current_user
     session["current_user"]
   end
@@ -33,21 +43,48 @@ get '/another' do
   haml :another
 end
 
-post '/login' do
-  openid_response = env["rack.openid.response"]
-  if openid_response
-    if openid_response.status == :success
-      session["current_user"] = openid_response.identity_url
-      redirect '/'
-    else
-      session.clear
-      "<pre>#{ openid_response.to_yaml }</pre> <a href='/'>Try again</a>"
-    end
+post '/login/openid' do
+  openid = params[:openid_identifier]
+  begin
+    oidreq = openid_consumer.begin(openid)
+  rescue OpenID::DiscoveryFailure => why
+    "Sorry, we couldn't find your identifier '#{openid}'"
   else
-    headers 'WWW-Authenticate' => Rack::OpenID.build_header(
-      :identifier => params["openid_identifier"]
-    )
-    throw :halt, [401, 'got openid?']
+    # You could request additional information here - see specs:
+    # http://openid.net/specs/openid-simple-registration-extension-1_0.html
+    # oidreq.add_extension_arg('sreg','required','nickname')
+    # oidreq.add_extension_arg('sreg','optional','fullname, email')
+    
+    # Send request - first parameter: Trusted Site,
+    # second parameter: redirect target
+    redirect oidreq.redirect_url(root_url, root_url + "/login/openid/complete")
+  end
+end
+
+get '/login/openid/complete' do
+  oidresp = openid_consumer.complete(params, request.url)
+
+  case oidresp.status
+    when OpenID::Consumer::FAILURE
+      "Sorry, we could not authenticate you with the identifier '{openid}'."
+
+    when OpenID::Consumer::SETUP_NEEDED
+      "Immediate request failed - Setup Needed"
+
+    when OpenID::Consumer::CANCEL
+      "Login cancelled."
+
+    when OpenID::Consumer::SUCCESS
+      # Access additional informations:
+       puts params['openid.sreg.nickname']
+       puts params['openid.sreg.fullname']   
+      
+      # Startup something
+      session["current_user"] = oidresp.identity_url
+      redirect "/"
+      "Login successfull. <pre>#{ oidresp.to_yaml }</pre>"  
+      # Maybe something like
+      # session[:user] = User.find_by_openid(oidresp.display_identifier)
   end
 end
 
@@ -62,7 +99,7 @@ __END__
 = haml :login_status, :layout => false
 
 - if !logged_in
-  %form{ :action => "/login", :method => "post" }
+  %form{ :action => "/login/openid", :method => "post" }
     %label
       OpenID URL:
       %input{ :type => 'text', :name => 'openid_identifier' }
