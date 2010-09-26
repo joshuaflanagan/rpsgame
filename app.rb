@@ -4,8 +4,13 @@ require 'sinatra'
 require 'yaml'
 require 'openid'
 require 'openid/store/filesystem'
+require 'mongo'
 
 use Rack::Session::Cookie
+
+configure do
+  DB = Mongo::Connection.new.db("rpsgame")
+end
 
 before do
   protected! unless request.path_info == '/' || request.path_info[/^\/login/]
@@ -32,14 +37,24 @@ helpers do
   def protected!
     redirect '/' unless logged_in 
   end
+
+  def users
+    DB["users"]
+  end
 end
 
 get '/' do
   haml :index
 end
 
-get '/another' do
-  haml :another
+get '/settings' do
+  haml :settings
+end
+
+post '/settings' do
+  current_user["color"] = params[:color]
+  users.save(current_user)
+  redirect '/'
 end
 
 post '/login/openid' do
@@ -74,16 +89,13 @@ get '/login/openid/complete' do
       "Login cancelled."
 
     when OpenID::Consumer::SUCCESS
-      # Access additional informations:
-       puts params['openid.sreg.nickname']
-       puts params['openid.sreg.fullname']   
-      
-      # Startup something
-      session["current_user"] = oidresp.identity_url
+      user = users.find_one({:identity => oidresp.identity_url}) 
+      if user.nil?
+        user = {:identity => oidresp.identity_url}
+        users.insert(user)
+      end
+      session["current_user"] = user 
       redirect "/"
-      "Login successfull. <pre>#{ oidresp.to_yaml }</pre>"  
-      # Maybe something like
-      # session[:user] = User.find_by_openid(oidresp.display_identifier)
   end
 end
 
@@ -104,18 +116,25 @@ __END__
       %input{ :type => 'text', :name => 'openid_identifier' }
     %input{ :type => 'submit', :value => 'Login' }
 - else
-  %a{ :href => '/another' } Go to another page
+  %a{ :href => '/settings' } Settings 
 
-@@ another
+@@ settings
 = haml :login_status, :layout => false
-%p This is another page
-
+%form{ :action => "/settings", :method => "post" }
+  %label
+    Favorite color:
+    %input{ :type => "text", :name => "color" }
+  %input{ :type => "submit", "value" => "Configure" }
 
 @@ login_status
 .status
   - if logged_in
+    :css
+      body {
+        background-color: #{ current_user["color"] || "#fff" };
+      }
     %p
-      == Logged in as #{ current_user }
+      == Logged in as #{ current_user["identity"] }
       %a{ :href => '/logout' } Logout
   - else
     %p Not logged in
