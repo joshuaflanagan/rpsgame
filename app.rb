@@ -9,7 +9,14 @@ require 'mongo'
 use Rack::Session::Cookie
 
 configure do
-  DB = Mongo::Connection.new.db("rpsgame")
+  mongo_url = ENV["MONGOHQ_URL"]
+  if mongo_url
+    uri = URI.parse(mongo_url)
+    cn = Mongo::Connection.from_uri(mongo_url)
+    DB = cn.db(uri.path.gsub(/^\//,''))
+  else
+    DB = Mongo::Connection.new.db("rpsgame")
+  end
 end
 
 before do
