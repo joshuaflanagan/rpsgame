@@ -1,7 +1,6 @@
 #! /usr/bin/env ruby
 require 'rubygems'
 require 'sinatra'
-require 'rack/openid'
 require 'yaml'
 require 'openid'
 require 'openid/store/filesystem'
@@ -14,8 +13,8 @@ end
 
 helpers do
   def openid_consumer
-    @openid_consumer ||= OpenID::Consumer.new(session,
-        OpenID::Store::Filesystem.new("#{File.dirname(__FILE__)}/tmp/openid"))  
+    #@openid_consumer ||= OpenID::Consumer.new(session, OpenID::Store::Filesystem.new("#{File.dirname(__FILE__)}/tmp/openid"))  
+    @openid_consumer ||= OpenID::Consumer.new(session, nil)
   end
 
   def root_url
