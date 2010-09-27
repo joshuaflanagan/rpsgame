@@ -64,6 +64,15 @@ post '/settings' do
   redirect '/'
 end
 
+post '/challenge' do
+  opponent_id = params[:opponent]
+  opponent = users.find_one({:identity => opponent_id})
+  return "Who? <a href='/'>Try again</a>" if opponent.nil?
+  # start a game
+  redirect '/'
+end
+
+
 post '/login/openid' do
   openid = params[:openid_identifier]
   begin
@@ -124,6 +133,11 @@ __END__
     %input{ :type => 'submit', :value => 'Login' }
 - else
   %a{ :href => '/settings' } Settings 
+  %form{ :action => "/challenge", :method => "post" }
+    %label
+      Opponent ID:
+      %input{ :type => "text", :name => "opponent" }
+    %input{ :type => "submit", :value => "Challenge" }
 
 @@ settings
 = haml :login_status, :layout => false
