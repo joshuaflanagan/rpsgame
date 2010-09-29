@@ -17,8 +17,9 @@ class User
 end
 
 configure :production do
+  mongo_url = ENV["MONGOHQ_URL"]
   uri = URI.parse(mongo_url)
-  MongoMapper.connection = Mongo::Connection.from_uri(ENV["MONGOHQ_URL"])
+  MongoMapper.connection = Mongo::Connection.from_uri(mongo_url)
   MongoMapper.database = uri.path.gsub(/^\//,'')
 end
 
