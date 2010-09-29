@@ -2,3 +2,5 @@ sinatra --version 1.0.0
 ruby-openid --version '>= 2.1.8'
 haml --version '>= 3.0.0'
 mongo --version '>= 1.0.0'
+i18n --version 0.4.1
+mongo_mapper --version 0.8.4

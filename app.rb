@@ -1,5 +1,6 @@
 #! /usr/bin/env ruby
 require 'rubygems'
+require 'mongo_mapper'
 require 'sinatra'
 require 'yaml'
 require 'openid'
@@ -8,15 +9,22 @@ require 'mongo'
 
 use Rack::Session::Cookie
 
-configure do
-  mongo_url = ENV["MONGOHQ_URL"]
-  if mongo_url
-    uri = URI.parse(mongo_url)
-    cn = Mongo::Connection.from_uri(mongo_url)
-    DB = cn.db(uri.path.gsub(/^\//,''))
-  else
-    DB = Mongo::Connection.new.db("rpsgame")
-  end
+class User
+  include MongoMapper::Document
+
+  key :identity, String
+  key :color, String
+end
+
+configure :production do
+  uri = URI.parse(mongo_url)
+  MongoMapper.connection = Mongo::Connection.from_uri(ENV["MONGOHQ_URL"])
+  MongoMapper.database = uri.path.gsub(/^\//,'')
+end
+
+configure :development, :test do
+  MongoMapper.connection = Mongo::Connection.new
+  MongoMapper.database = "rpsgame"
 end
 
 before do
@@ -45,9 +53,6 @@ helpers do
     redirect '/' unless logged_in 
   end
 
-  def users
-    DB["users"]
-  end
 end
 
 get '/' do
@@ -59,14 +64,14 @@ get '/settings' do
 end
 
 post '/settings' do
-  current_user["color"] = params[:color]
-  users.save(current_user)
+  current_user.color = params[:color]
+  current_user.save
   redirect '/'
 end
 
 post '/challenge' do
   opponent_id = params[:opponent]
-  opponent = users.find_one({:identity => opponent_id})
+  opponent = User.first({:identity => opponent_id})
   return "Who? <a href='/'>Try again</a>" if opponent.nil?
   # start a game
   redirect '/'
@@ -105,11 +110,7 @@ get '/login/openid/complete' do
       "Login cancelled."
 
     when OpenID::Consumer::SUCCESS
-      user = users.find_one({:identity => oidresp.identity_url}) 
-      if user.nil?
-        user = {:identity => oidresp.identity_url}
-        users.insert(user)
-      end
+      user = User.first_or_create({:identity => oidresp.identity_url}) 
       session["current_user"] = user 
       redirect "/"
   end
@@ -152,10 +153,10 @@ __END__
   - if logged_in
     :css
       body {
-        background-color: #{ current_user["color"] || "#fff" };
+        background-color: #{ current_user.color || "#fff" };
       }
     %p
-      == Logged in as #{ current_user["identity"] }
+      == Logged in as #{ current_user.identity }
       %a{ :href => '/logout' } Logout
   - else
     %p Not logged in
